@@ -23,8 +23,8 @@ Walking skeleton, built riskiest-first.
 - [x] **Phase 3 — Write tool + `can_use_tool` gate (the security core).** `python -m soc_assist.run`: gated, human-approved dashboard publishing; `python -m soc_assist.demo_gate`: the out-of-scope rejection proof.
 - [ ] **Phase 4 — Slack surface.** Code complete (`python -m soc_assist.run slack`); awaiting a Slack app + tokens to verify live.
 - [x] **Phase 5 — Attack sim + detection.** `scripts/load_sample.sh` ingests the committed dataset; `python -m soc_assist.run --live` investigates the real fired detection.
-- [ ] **Phase 6 — Audit plane.**
-- [ ] **Phase 7 — Polish + submission.**
+- [x] **Phase 6 — Audit plane.** Every gate decision and write → `index=soc_audit` over HEC + the `soc_assist_audit_trail` dashboard.
+- [ ] **Phase 7 — Polish + submission.** Diagram + docs done; demo video and final wording pass remain (human).
 
 ## Prerequisites
 
@@ -67,6 +67,30 @@ $EDITOR .env                # set Claude auth + the SPLUNK_MCP_* values
   to log in — or `claude setup-token` and set `CLAUDE_CODE_OAUTH_TOKEN`. No API key.
 - *API key:* set `ANTHROPIC_API_KEY` from `platform.claude.com` (metered, separate billing).
 
+## Run it
+
+```bash
+# one-time, on/against your Splunk instance:
+SPLUNK_URL=https://your-splunk:8089 SPLUNK_AUTH=admin:changeme ./scripts/provision.sh
+#   -> app soc_assist, detection saved search, audit index
+#   then fill the WRITE/AUDIT vars in .env (least-priv recipe in scripts/provision.sh)
+
+# the demo arc:
+./scripts/load_sample.sh                  # attack sim -> index=auth (one curl)
+python -m soc_assist.run --live           # detection fires -> investigate -> verdict
+                                          # -> human-gated dashboard publish -> URL
+
+# pieces, individually:
+python -m soc_assist.investigate          # read-only investigation of the fixture alert
+python -m soc_assist.run                  # fixture alert, full gated run
+python -m soc_assist.run slack            # same, narrated in a Slack thread (Phase 4 env)
+python -m soc_assist.demo_gate            # offline proof the gate can't be exceeded
+```
+
+Every dashboard write pauses for an explicit human **yes** — that's the point.
+The agent's own actions land in `index=soc_audit` and the
+`soc_assist_audit_trail` dashboard: the watcher is watched.
+
 ## Run the Phase 1 spike
 
 The spike proves the riskiest integration — the SDK talking to the Splunk MCP
@@ -76,12 +100,12 @@ server — and nothing more. Make it green before building anything downstream.
 python spike.py
 ```
 
-Expected: a line reporting the `splunk` MCP server as `connected`, a `[tool]`
-line showing `mcp__splunk__splunk_run_query`, and a plain-language summary of
-five `index=_internal` events.
+Expected: an MCP server status line (servers report `pending` at init — only
+`failed` is an error), a `[tool]` line showing `mcp__splunk__splunk_run_query`,
+and a plain-language summary of five `index=_internal` events.
 
 If it fails, the spike output points at the cause:
-- **server not `connected`** → check `SPLUNK_MCP_URL`, `SPLUNK_MCP_TRANSPORT`
+- **server `failed`** → check `SPLUNK_MCP_URL`, `SPLUNK_MCP_TRANSPORT`
   (`http` vs `sse`), and the auth header (`SPLUNK_MCP_AUTH_SCHEME` + token).
 - **no `[tool]` line** → the agent saw no tools; confirm `allowed_tools` matches
   the real tool names (they're prefixed `splunk_`, hence the `mcp__splunk__*`
