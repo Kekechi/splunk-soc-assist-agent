@@ -1,0 +1,37 @@
+[project]
+name = "soc-assist"
+version = "0.1.0"
+description = "An AI SOC copilot that turns a Splunk alert into a guided, plain-language investigation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "soc-assist contributors" }]
+keywords = ["splunk", "security", "soc", "siem", "claude", "agent", "mcp", "least-privilege"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Information Technology",
+  "Topic :: Security",
+  "Programming Language :: Python :: 3",
+]
+
+# Core deps — enough to run the Phase 1 spike and the console investigation loop.
+dependencies = [
+  "claude-agent-sdk",
+  "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# Phase 3 — the single gated Splunk REST write tool (Dashboard Studio views).
+write = ["httpx>=0.27"]
+# Phase 4 — the Slack notify + investigation surface.
+slack = ["slack-bolt>=1.18"]
+# Everything, for local development.
+all = ["httpx>=0.27", "slack-bolt>=1.18"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/soc_assist"]

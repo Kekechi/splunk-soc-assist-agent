@@ -1,0 +1,29 @@
+# Secrets / local config
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local dev/session notes — not part of the public repo (may contain
+# deployment-specific hostnames). The SDK does not treat this as config.
+.claude/session/
