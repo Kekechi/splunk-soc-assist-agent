@@ -27,3 +27,8 @@ env/
 # Local dev/session notes — not part of the public repo (may contain
 # deployment-specific hostnames). The SDK does not treat this as config.
 .claude/session/
+
+# Local-only workarounds & notes — never part of the public repo.
+.local/
+CLAUDE.local.md
+.claude/settings.local.json

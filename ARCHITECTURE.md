@@ -23,8 +23,8 @@ assisted investigation → (approved) dashboard rendered → resolution + summar
                             ┌─────────────────────────────────┼──────────────────────────────┐
                       READ plane                          WRITE plane                     NOTIFY plane
              Splunk MCP server (read-only):        one in-process @tool:            Slack (Bolt):
-             splunk_run_query, splunk_get_indexes, POST Dashboard Studio JSON       notify + investigation
-             saia_explain_spl, …                   to data/ui/views                 thread. No Splunk
+             splunk_run_query, splunk_get_indexes  POST Dashboard Studio JSON       notify + investigation
+             (SPL explain: Claude-native)          to data/ui/views                 thread. No Splunk
              (mcp__splunk__*)                       (scoped to ONE app)             privilege at all.
                             │                              │
                             │                        canUseTool gate:
@@ -38,7 +38,8 @@ assisted investigation → (approved) dashboard rendered → resolution + summar
 
 - **Read** — native Splunk MCP, read-only, broad. The SDK consumes it as a client.
   Core tools are prefixed `splunk_` (e.g. `splunk_run_query`); the SPL-assistant
-  tools are prefixed `saia_` and require *Splunk AI Assistant for SPL*. Fully
+  tools are prefixed `saia_` and require *Splunk AI Assistant for SPL* — these are
+  **optional**, since the harness defaults to Claude-native SPL explain/generate. Fully
   namespaced for the SDK as `mcp__splunk__<tool>`.
 - **Write** — the *only* elevated capability. One narrow `@tool`; the LLM never
   holds Splunk write credentials, it can only invoke the tool, and the tool can

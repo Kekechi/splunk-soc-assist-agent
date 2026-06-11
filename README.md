@@ -33,7 +33,9 @@ You supply a Splunk environment and credentials via `.env` — nothing is hardco
 - A reachable **Splunk Enterprise/Cloud** (reference target: Enterprise 10.2.x) over HTTPS.
 - The **MCP Server for Splunk platform** app installed and reachable; the service
   account's role has the `mcp_tool_execute` capability.
-- **Splunk AI Assistant for SPL** installed (gates the `saia_*` explain/generate tools).
+- *(optional)* **Splunk AI Assistant for SPL** installed — enables the `saia_*`
+  explain/generate tools. The harness defaults to **Claude-native** SPL explain/generate
+  and does **not** require it (SAIA may need a Cloud entitlement; not worth blocking on).
 - A **service account / token** for the harness:
   - read + search (via MCP),
   - a write path to one **app context** that will own generated dashboards (Phase 3),

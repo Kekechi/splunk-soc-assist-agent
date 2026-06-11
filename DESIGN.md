@@ -89,8 +89,8 @@ Four planes, separated by privilege:
                                 ┌───────────────────────────────┼────────────────────────────┐
                           READ plane                        WRITE plane                   NOTIFY plane
                    Splunk MCP server (read-only):      one in-process @tool:          Slack (Bolt):
-                   run_query, get_indexes,             POST Dashboard Studio JSON      notify + investigation
-                   saia_explain_spl, …                 to data/ui/views                thread. No Splunk
+                   run_query, get_indexes, …           POST Dashboard Studio JSON      notify + investigation
+                   (SPL explain: Claude-native)        to data/ui/views                thread. No Splunk
                    (mcp__splunk__*)                    (scoped to ONE app)             privilege at all.
                                 │                            │
                                 │                      canUseTool gate:
@@ -159,9 +159,14 @@ observable *inside that same SIEM*.
 
 - **Language:** Python (Agent SDK is Python-native; Splunk SDK + Slack Bolt are Python — one ecosystem).
 - **Harness:** `claude-agent-sdk` — agent loop, MCP client, custom tools, permission gate, service runtime.
-- **Read:** Splunk MCP server over HTTP (read-only by design). Requires *Splunk AI
-  Assistant for SPL* installed for the `saia_*` explain/generate tools — **verify this is
-  installed**.
+- **Read:** Splunk MCP server over HTTP (read-only by design).
+- **SPL explain / generate:** default to **Claude-native** — the harness LLM already does
+  NL→SPL and SPL→plain-English well, with full conversation context. The Splunk `saia_*`
+  tools (AI Assistant for SPL) are an **optional, swappable** enhancement behind the same
+  interface, **not a dependency** (they may require a Cloud entitlement to provision; not
+  worth blocking on with a tight timeline). On-prem alternative for a second "Splunk AI"
+  feature with no cloud tenant: **MLTK** (Machine Learning Toolkit) for anomaly detection —
+  *verify on 10.2*.
 - **Write:** one in-process `@tool` → Splunk REST `data/ui/views` (Splunk SDK for Python or `httpx`).
 - **Enforcement:** `canUseTool` callback (approval + single-app scope check).
 - **Notify/investigate:** Slack Bolt for Python.
@@ -177,7 +182,8 @@ observable *inside that same SIEM*.
   saved searches, alerts, or knowledge objects.
   → https://help.splunk.com/en/splunk-enterprise/mcp-server-for-splunk-platform/mcp-server-tools
 - `saia_*` tools (generate/explain/optimize SPL, ask question) require **Splunk AI
-  Assistant for SPL** installed.
+  Assistant for SPL** installed — treated as **optional** here (see §8); Claude-native SPL
+  is the default and carries no such dependency.
 - Dashboards support full CRUD via REST `POST …/data/ui/views`, Dashboard Studio format,
   documented for **Splunk Enterprise 10.2**.
   → https://help.splunk.com/en/splunk-enterprise/create-dashboards-and-reports/dashboard-studio/10.2/manage-dashboards/create-a-dashboard-using-rest-api-endpoints
@@ -194,7 +200,11 @@ observable *inside that same SIEM*.
   layer; not blocking for the PoC.)
 - The Splunk MCP server's **HTTP endpoint + auth** mechanism as configured in your
   environment, and that the service role has `mcp_tool_execute`.
-- That **AI Assistant for SPL** is installed (gates the `saia_*` tools).
+- Whether the hackathon's "leverage Splunk's latest AI capabilities" requirement is
+  satisfied by the **MCP Server** (and/or **MLTK**), or specifically requires **AI
+  Assistant for SPL**. Ask the team async; **do not block building on the answer** — the
+  reply can only relax constraints, never block. SAIA is treated as optional (see §8);
+  Claude-native SPL is the default.
 - The **TypeScript** package name if you ever go TS (Python is the recommendation).
 
 ---
@@ -206,7 +216,8 @@ State these as **prerequisites** in the README — abstract, not deployment-spec
 - A reachable **Splunk Enterprise/Cloud** (reference target: Enterprise 10.2.x) over HTTPS.
 - The **MCP Server for Splunk platform** app installed and reachable; service account has
   `mcp_tool_execute`.
-- **Splunk AI Assistant for SPL** installed (for `saia_*` tools).
+- *(optional)* **Splunk AI Assistant for SPL** installed — enables the `saia_*` tools; the
+  harness defaults to Claude-native SPL and does **not** require it.
 - A **service account / token** for the harness:
   - read + search (via MCP),
   - a write path to one **app context** that will own generated dashboards,
@@ -231,8 +242,8 @@ investing in polish.
   server, runs one `run_query`, prints results. Confirms connectivity + auth + the SDK↔MCP
   link. *Stop here until this works — everything depends on it.*
 - **Phase 2 — Investigation loop (console).** Feed the agent a hard-coded "alert context";
-  it queries, uses `saia_explain_spl`, and returns a plain-language explanation +
-  severity-with-a-reason. No Slack yet.
+  it queries, explains the SPL in plain language (**Claude-native**; `saia_explain_spl` as
+  an optional drop-in), and returns that explanation + severity-with-a-reason. No Slack yet.
 - **Phase 3 — Write tool + gate (the security core).** One `@tool` that creates a Splunk
   dashboard via REST. Wire `canUseTool` to require approval and enforce single-app scope.
   Demonstrate a rejected out-of-scope write. This is the least-privilege story working.
@@ -256,7 +267,7 @@ protects the timeline.
 
 1. Create the repo; drop in this file as `DESIGN.md`, add an OSS license (MIT or Apache-2.0).
 2. `pip install claude-agent-sdk`; set `ANTHROPIC_API_KEY`.
-3. Confirm the Splunk MCP server endpoint + token, and that AI Assistant for SPL is installed (§9 to-verify).
+3. Confirm the Splunk MCP server endpoint + token. (AI Assistant for SPL is optional — see §8; don't block on it.)
 4. Write the Phase 1 spike: SDK + `mcpServers` pointing at Splunk MCP, `allowedTools:
    ["mcp__splunk__*"]`, run one query, print results. **Make this green before anything else.**
 ```
