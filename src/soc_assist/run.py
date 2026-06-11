@@ -80,7 +80,12 @@ def _full_options(surface: Surface) -> ClaudeAgentOptions:
             "splunk": splunk_mcp_server(),  # READ plane (external, read-only)
             "soc_write": create_write_server(),  # WRITE plane (in-process, one tool)
         },
-        allowed_tools=["mcp__splunk__*"],  # reads pre-approved; the write is NOT
+        # Nothing is pre-approved: pre-allowed tools bypass can_use_tool, so an
+        # empty list is what routes EVERY tool call — reads included — through
+        # the gate, and from there into the audit index (SPEC 6.1 "every
+        # allow/deny"). Tool visibility comes from MCP attachment, not from
+        # allowed_tools (verified live in Phase 3).
+        allowed_tools=[],
         system_prompt=build_system_prompt(can_write=True),
         setting_sources=[],
         can_use_tool=make_can_use_tool(surface, on_decision=on_decision),

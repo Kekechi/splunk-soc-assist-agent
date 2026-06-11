@@ -28,6 +28,65 @@ _REX = (
 )
 
 
+def build_audit_dashboard(audit_index: str = "soc_audit") -> dict:
+    """The watcher is watched (SPEC §6.2): every agent action, as a dashboard."""
+    window = {"earliest": "-24h@h", "latest": "now"}
+    base = f'index={audit_index} sourcetype="soc_assist:audit"'
+    return {
+        "title": "SOC Assist — agent audit trail",
+        "description": (
+            "Every soc-assist action: gate decisions (allow/deny + reason) and "
+            "dashboard writes. The agent that watches the SIEM is watched in it."
+        ),
+        "dataSources": {
+            "ds_decisions": {
+                "type": "ds.search",
+                "name": "Gate decisions over time",
+                "options": {
+                    "query": f"{base} | timechart span=10m count by decision",
+                    "queryParameters": window,
+                },
+            },
+            "ds_actions": {
+                "type": "ds.search",
+                "name": "Recent agent actions",
+                "options": {
+                    "query": (
+                        f"{base} | sort - _time | head 50 "
+                        "| table _time, action, tool, decision, args_summary, detail"
+                    ),
+                    "queryParameters": window,
+                },
+            },
+        },
+        "visualizations": {
+            "viz_decisions": {
+                "type": "splunk.column",
+                "title": "Gate decisions (10m bins)",
+                "dataSources": {"primary": "ds_decisions"},
+            },
+            "viz_actions": {
+                "type": "splunk.table",
+                "title": "Agent action log (latest 50)",
+                "dataSources": {"primary": "ds_actions"},
+            },
+        },
+        "layout": {
+            "type": "grid",
+            "options": {},
+            "structure": [
+                {"item": "viz_decisions", "type": "block",
+                 "position": {"x": 0, "y": 0, "w": 1200, "h": 300}},
+                {"item": "viz_actions", "type": "block",
+                 "position": {"x": 0, "y": 300, "w": 1200, "h": 500}},
+            ],
+        },
+        "defaults": {
+            "dataSources": {"ds.search": {"options": {"queryParameters": window}}}
+        },
+    }
+
+
 def build_brute_force_dashboard(investigation: Investigation, alert: AlertContext) -> dict:
     """A 3-panel evidence dashboard for a brute-force alert investigation."""
     src_ip = alert.entities.get("src_ip", "*")
