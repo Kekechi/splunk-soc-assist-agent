@@ -130,13 +130,24 @@ async def post_dashboard(
     {"name": str, "definition": dict},
 )
 async def create_dashboard(args: dict[str, Any]) -> dict[str, Any]:
+    from .audit import emitter  # late import: audit stays optional at import time
+
+    name = args.get("name")
     try:
-        view_url = await post_dashboard(args.get("name"), args.get("definition"))
+        view_url = await post_dashboard(name, args.get("definition"))
     except Exception as exc:  # the agent gets the reason, never a traceback
+        await emitter().emit(
+            "dashboard_write", tool="create_dashboard",
+            args_summary=f"name={name}", decision="error", detail=str(exc)[:300],
+        )
         return {
             "content": [{"type": "text", "text": f"Dashboard write failed: {exc}"}],
             "is_error": True,
         }
+    await emitter().emit(
+        "dashboard_write", tool="create_dashboard",
+        args_summary=f"name={name}", decision="success", detail=view_url,
+    )
     return {"content": [{"type": "text", "text": f"Dashboard created: {view_url}"}]}
 
 

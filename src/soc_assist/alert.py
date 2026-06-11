@@ -38,6 +38,56 @@ class AlertContext:
     latest: str
 
 
+# The provisioned detection (Phase 5.3): a saved search in the soc_assist app,
+# dispatched on demand for the demo. Search-time rex, so no field-extraction
+# add-on is required on the instance.
+DETECTION_RULE_NAME = "Auth brute force: failed-login burst followed by a success"
+DETECTION_RULE_ID = "soc-assist-bf-001"
+DETECTION_SAVED_SEARCH = "soc_assist_bf_detect"
+DETECTION_SPL = (
+    'index=auth sourcetype=linux_secure ("Failed password" OR "Accepted password") '
+    '| rex "(?<action_raw>Failed|Accepted) password for (?<user>\\S+) '
+    'from (?<src_ip>\\S+) port" '
+    '| eval action=if(action_raw="Failed","failure","success") '
+    '| stats count(eval(action="failure")) as failure_count, '
+    "values(action) as actions, min(_time) as earliest_time, "
+    "max(_time) as latest_time by src_ip, user "
+    "| where failure_count > 20"
+)
+
+
+def alert_from_detection_row(row: dict) -> AlertContext:
+    """Build the AlertContext from one fired row of the provisioned detection."""
+
+    def iso(epoch: object) -> str:
+        from datetime import datetime, timezone
+
+        try:
+            return datetime.fromtimestamp(float(epoch), tz=timezone.utc).isoformat()
+        except (TypeError, ValueError):
+            return str(epoch)
+
+    actions = row.get("actions", [])
+    if isinstance(actions, str):
+        actions = [actions]
+    return AlertContext(
+        rule_name=DETECTION_RULE_NAME,
+        rule_id=DETECTION_RULE_ID,
+        detection_spl=DETECTION_SPL,
+        fired_at=iso(row.get("latest_time")),
+        index="auth",
+        severity_hint="medium",
+        entities={
+            "src_ip": str(row.get("src_ip", "")),
+            "user": str(row.get("user", "")),
+            "actions": ", ".join(actions),
+        },
+        observed_count=int(float(row.get("failure_count", 0))),
+        earliest=iso(row.get("earliest_time")),
+        latest=iso(row.get("latest_time")),
+    )
+
+
 # ~50 failed SSH logins from one src_ip against one user, then one success.
 # IP from TEST-NET-3 (RFC 5737) so the fixture stays environment-agnostic.
 BRUTE_FORCE_FIXTURE = AlertContext(

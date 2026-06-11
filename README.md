@@ -22,7 +22,7 @@ Walking skeleton, built riskiest-first.
 - [x] **Phase 2 — Investigation loop (console).** `python -m soc_assist.investigate`: alert in, plain-language verdict out, severity citing the rubric.
 - [x] **Phase 3 — Write tool + `can_use_tool` gate (the security core).** `python -m soc_assist.run`: gated, human-approved dashboard publishing; `python -m soc_assist.demo_gate`: the out-of-scope rejection proof.
 - [ ] **Phase 4 — Slack surface.** Code complete (`python -m soc_assist.run slack`); awaiting a Slack app + tokens to verify live.
-- [ ] **Phase 5 — Attack sim + detection.**
+- [x] **Phase 5 — Attack sim + detection.** `scripts/load_sample.sh` ingests the committed dataset; `python -m soc_assist.run --live` investigates the real fired detection.
 - [ ] **Phase 6 — Audit plane.**
 - [ ] **Phase 7 — Polish + submission.**
 

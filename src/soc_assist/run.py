@@ -25,12 +25,18 @@ from claude_agent_sdk import (
     ToolUseBlock,
 )
 
-from .alert import BRUTE_FORCE_FIXTURE, AlertContext
+from .alert import (
+    BRUTE_FORCE_FIXTURE,
+    DETECTION_SAVED_SEARCH,
+    AlertContext,
+    alert_from_detection_row,
+)
+from .audit import emitter
 from .config import investigation_model, splunk_mcp_server
 from .dashboard import build_brute_force_dashboard
 from .gate import make_can_use_tool
-from .investigate import Investigation, investigate
-from .prompts import build_system_prompt
+from .investigate import Investigation, _response_text, investigate
+from .prompts import build_system_prompt, parse_verdict
 from .surface import CliSurface, Surface
 from .write_tool import create_write_server
 
@@ -45,7 +51,30 @@ what the dashboard would have shown, and stop. If it succeeds, give the analyst 
 dashboard URL and one line on what each of the three panels shows."""
 
 
+LIVE_ALERT_TURN = f"""A detection may have fired. Run the saved search
+"{DETECTION_SAVED_SEARCH}" (app context: soc_assist) with your Splunk tools and reply
+with ONLY a JSON object for the single fired row, keys exactly as the search returns
+them: src_ip, user, failure_count, actions, earliest_time, latest_time.
+If it returns no rows, reply with exactly {{}}."""
+
+
+async def fetch_live_alert(client: ClaudeSDKClient) -> AlertContext | None:
+    """Bootstrap the alert from the real provisioned detection, via the agent's
+    own read plane (the MCP token is not a raw splunkd credential, and the
+    harness holds no other read credential — by design)."""
+    await client.query(LIVE_ALERT_TURN)
+    row = parse_verdict(await _response_text(client))
+    return alert_from_detection_row(row) if row else None
+
+
 def _full_options(surface: Surface) -> ClaudeAgentOptions:
+    audit = emitter()
+
+    async def on_decision(tool_name: str, decision: str, reason: str) -> None:
+        await audit.emit(
+            "gate_decision", tool=tool_name, decision=decision, args_summary=reason
+        )
+
     return ClaudeAgentOptions(
         mcp_servers={
             "splunk": splunk_mcp_server(),  # READ plane (external, read-only)
@@ -54,14 +83,26 @@ def _full_options(surface: Surface) -> ClaudeAgentOptions:
         allowed_tools=["mcp__splunk__*"],  # reads pre-approved; the write is NOT
         system_prompt=build_system_prompt(can_write=True),
         setting_sources=[],
-        can_use_tool=make_can_use_tool(surface),
+        can_use_tool=make_can_use_tool(surface, on_decision=on_decision),
         model=investigation_model(),
         max_turns=50,
     )
 
 
-async def run(alert: AlertContext, surface: Surface) -> Investigation:
+async def run(alert: AlertContext | None, surface: Surface) -> Investigation | None:
+    """Investigate `alert` (or, if None, the live fired detection) and publish
+    the evidence dashboard through the gate."""
     async with ClaudeSDKClient(options=_full_options(surface)) as client:
+        if alert is None:
+            await surface.notify("[live] dispatching the provisioned detection ...")
+            alert = await fetch_live_alert(client)
+            if alert is None:
+                await surface.notify("[live] detection returned no rows — nothing to do.")
+                return None
+            await surface.notify(
+                f"[live] fired: {alert.rule_name} | {alert.entities} "
+                f"| {alert.observed_count} failures"
+            )
         inv = await investigate(alert, surface, debug=True, client=client)
         await _print_verdict(inv, surface)
 
@@ -111,9 +152,9 @@ async def main() -> None:
     else:
         surface = CliSurface()
 
-    alert = BRUTE_FORCE_FIXTURE
+    alert = None if "--live" in sys.argv[1:] else BRUTE_FORCE_FIXTURE
     try:
-        await surface.notify(f"=== soc-assist | investigating: {alert.rule_name} ===\n")
+        await surface.notify("=== soc-assist ===\n")
         await run(alert, surface)
     finally:
         if use_slack:
