@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -101,10 +102,22 @@ recommended next steps:
 
 
 async def main() -> None:
-    surface = CliSurface()
+    use_slack = "slack" in sys.argv[1:]
+    if use_slack:
+        from .slack_app import SlackSurface  # optional dep: pip install -e '.[slack]'
+
+        surface: Surface = SlackSurface.from_env()
+        await surface.start()
+    else:
+        surface = CliSurface()
+
     alert = BRUTE_FORCE_FIXTURE
-    await surface.notify(f"=== soc-assist | investigating: {alert.rule_name} ===\n")
-    await run(alert, surface)
+    try:
+        await surface.notify(f"=== soc-assist | investigating: {alert.rule_name} ===\n")
+        await run(alert, surface)
+    finally:
+        if use_slack:
+            await surface.stop()
 
 
 if __name__ == "__main__":

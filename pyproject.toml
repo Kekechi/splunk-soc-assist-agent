@@ -24,10 +24,11 @@ dependencies = [
 [project.optional-dependencies]
 # Phase 3 — the single gated Splunk REST write tool (Dashboard Studio views).
 write = ["httpx>=0.27"]
-# Phase 4 — the Slack notify + investigation surface.
-slack = ["slack-bolt>=1.18"]
+# Phase 4 — the Slack notify + investigation surface. aiohttp backs Bolt's
+# async Socket Mode adapter (slack-bolt does not pull it in itself).
+slack = ["slack-bolt>=1.18", "aiohttp>=3.9"]
 # Everything, for local development.
-all = ["httpx>=0.27", "slack-bolt>=1.18"]
+all = ["httpx>=0.27", "slack-bolt>=1.18", "aiohttp>=3.9"]
 
 [build-system]
 requires = ["hatchling"]
