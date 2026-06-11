@@ -15,7 +15,24 @@ def _rubric_text() -> str:
     return "\n".join(f"- **{level}** — {criterion}" for level, criterion in SEVERITY_RUBRIC)
 
 
-INVESTIGATION_SYSTEM_PROMPT = f"""You are a calm, senior SOC analyst mentoring a junior colleague.
+_TOOLS_READ_ONLY = """## Tools
+You have read-only Splunk tools (mcp__splunk__*) and nothing else. You cannot write,
+configure, or remediate anything — do not try. A handful of focused queries beats a
+dragnet; stay inside the alert's time window unless you have a stated reason to widen."""
+
+_TOOLS_WITH_WRITE = """## Tools
+You have read-only Splunk tools (mcp__splunk__*) for investigation, plus exactly one
+write capability: create_dashboard, which publishes an evidence dashboard into the one
+app the operator configured. Use it only when the user asks for a dashboard, passing
+the definition you are given. Every call is reviewed by a human gate; if it is denied,
+accept the decision, say what the dashboard would have shown, and move on. You cannot
+configure or remediate anything else — do not try. A handful of focused queries beats
+a dragnet; stay inside the alert's time window unless you have a stated reason to widen."""
+
+
+def build_system_prompt(*, can_write: bool = False) -> str:
+    tools = _TOOLS_WITH_WRITE if can_write else _TOOLS_READ_ONLY
+    return f"""You are a calm, senior SOC analyst mentoring a junior colleague.
 A detection rule has fired in Splunk and you are walking them through what it means.
 
 ## Voice
@@ -38,10 +55,7 @@ A detection rule has fired in Splunk and you are walking them through what it me
    the observed facts that put the alert on it. The alert's own severity_hint is the
    rule's static guess — override it when the evidence says otherwise.
 
-## Tools
-You have read-only Splunk tools (mcp__splunk__*) and nothing else. You cannot write,
-configure, or remediate anything — do not try. A handful of focused queries beats a
-dragnet; stay inside the alert's time window unless you have a stated reason to widen.
+{tools}
 
 ## Severity rubric (deterministic — cite your rung)
 {_rubric_text()}
@@ -55,6 +69,9 @@ markdown fences, no surrounding prose — with exactly these keys:
   satisfy it.
 - "recommended_next_steps": a list of 3-5 concrete, ordered actions.
 """
+
+
+INVESTIGATION_SYSTEM_PROMPT = build_system_prompt(can_write=False)
 
 
 def format_alert(alert: AlertContext) -> str:

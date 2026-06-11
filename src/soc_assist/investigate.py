@@ -71,39 +71,51 @@ def _spl_of(block: ToolUseBlock) -> str | None:
 
 
 async def investigate(
-    alert: AlertContext, surface: Surface, *, debug: bool = False
+    alert: AlertContext,
+    surface: Surface,
+    *,
+    debug: bool = False,
+    client: ClaudeSDKClient | None = None,
 ) -> Investigation:
-    """Run the read-only investigation for one alert and return its verdict."""
+    """Run the investigation for one alert and return its verdict.
+
+    With no `client`, opens a fresh read-only session (Phase 2 behavior). The
+    full app (run.py) passes its own gated session instead so the conversation
+    can continue into the dashboard step.
+    """
+    if client is None:
+        async with ClaudeSDKClient(options=_options()) as own:
+            return await investigate(alert, surface, debug=debug, client=own)
+
     queries_run: list[str] = []
 
-    async with ClaudeSDKClient(options=_options()) as client:
-        await client.query(format_alert(alert))
-        async for message in client.receive_response():
-            if debug and isinstance(message, SystemMessage) and message.subtype == "init":
-                await surface.notify(
-                    f"[debug] MCP servers: {message.data.get('mcp_servers', [])}"
-                )
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        await surface.stream(block.text)
-                    elif isinstance(block, ToolUseBlock):
-                        spl = _spl_of(block)
-                        if spl is not None:
-                            queries_run.append(spl)
-                            await surface.notify(f"  [splunk query] {spl}")
-                        else:
-                            await surface.notify(f"  [tool] {block.name}")
+    await client.query(format_alert(alert))
+    async for message in client.receive_response():
+        if debug and isinstance(message, SystemMessage) and message.subtype == "init":
+            await surface.notify(
+                f"[debug] MCP servers: {message.data.get('mcp_servers', [])}"
+            )
+        if isinstance(message, AssistantMessage):
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    await surface.stream(block.text)
+                elif isinstance(block, ToolUseBlock):
+                    spl = _spl_of(block)
+                    if spl is not None:
+                        queries_run.append(spl)
+                        await surface.notify(f"  [splunk query] {spl}")
+                    else:
+                        await surface.notify(f"  [tool] {block.name}")
 
-        # Structured tail: one more turn that must come back as bare JSON.
-        await client.query(VERDICT_REQUEST)
-        text = await _response_text(client)
-        try:
-            verdict = parse_verdict(text)
-        except (ValueError, json.JSONDecodeError):
-            await surface.notify("[!] Verdict was not valid JSON — asking once more.")
-            await client.query(VERDICT_RETRY)
-            verdict = parse_verdict(await _response_text(client))
+    # Structured tail: one more turn that must come back as bare JSON.
+    await client.query(VERDICT_REQUEST)
+    text = await _response_text(client)
+    try:
+        verdict = parse_verdict(text)
+    except (ValueError, json.JSONDecodeError):
+        await surface.notify("[!] Verdict was not valid JSON — asking once more.")
+        await client.query(VERDICT_RETRY)
+        verdict = parse_verdict(await _response_text(client))
 
     return Investigation(
         summary=verdict.get("summary", ""),
