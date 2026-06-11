@@ -18,8 +18,8 @@ privilege, auditing its own actions** — governing the AI *is* the security wor
 Walking skeleton, built riskiest-first.
 
 - [x] **Phase 0 — Scaffold.** This repo: license, packaging, README, config, design doc, diagram placeholder.
-- [ ] **Phase 1 — Prove the read path** (`spike.py`). SDK ↔ Splunk MCP, one query, real results. *In progress.*
-- [ ] **Phase 2 — Investigation loop (console).**
+- [x] **Phase 1 — Prove the read path** (`spike.py`). SDK ↔ Splunk MCP, one query, real results.
+- [x] **Phase 2 — Investigation loop (console).** `python -m soc_assist.investigate`: alert in, plain-language verdict out, severity citing the rubric.
 - [ ] **Phase 3 — Write tool + `can_use_tool` gate (the security core).**
 - [ ] **Phase 4 — Slack surface.**
 - [ ] **Phase 5 — Attack sim + detection.**
