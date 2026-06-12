@@ -95,7 +95,8 @@ async def investigate(
     async for message in client.receive_response():
         if debug and isinstance(message, SystemMessage) and message.subtype == "init":
             await surface.notify(
-                f"[debug] MCP servers: {message.data.get('mcp_servers', [])}"
+                f"[debug] MCP servers: {message.data.get('mcp_servers', [])}",
+                debug=True,
             )
         if isinstance(message, AssistantMessage):
             for block in message.content:
@@ -105,9 +106,9 @@ async def investigate(
                     spl = _spl_of(block)
                     if spl is not None:
                         queries_run.append(spl)
-                        await surface.notify(f"  [splunk query] {spl}")
+                        await surface.notify(f"  [splunk query] {spl}", debug=True)
                     else:
-                        await surface.notify(f"  [tool] {block.name}")
+                        await surface.notify(f"  [tool] {block.name}", debug=True)
 
     # Structured tail: one more turn that must come back as bare JSON.
     await client.query(VERDICT_REQUEST)
@@ -115,7 +116,7 @@ async def investigate(
     try:
         verdict = parse_verdict(text)
     except (ValueError, json.JSONDecodeError):
-        await surface.notify("[!] Verdict was not valid JSON — asking once more.")
+        await surface.notify("[!] Verdict was not valid JSON — asking once more.", debug=True)
         await client.query(VERDICT_RETRY)
         verdict = parse_verdict(await _response_text(client))
 

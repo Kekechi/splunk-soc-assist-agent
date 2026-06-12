@@ -10,9 +10,17 @@ correlation_id -> asyncio.Future map on the one shared event loop. The gate
 awaits the Future; the click handler resolves it; a timeout resolves it to
 False (default-deny), same as every other ambiguous outcome.
 
+Two audiences, two channels (optional). The analyst channel (SLACK_CHANNEL)
+carries only signal — the detection, the verdict, the approval buttons, the
+published dashboard — rooted as one thread per investigation. The operator
+channel (SLACK_DEBUG_CHANNEL, optional) carries the verbose trail: every tool
+call, SPL query, and the agent's running narration. With no debug channel set,
+the operator trail folds back into the analyst thread (the single-channel
+behavior), so existing one-channel setups are unchanged.
+
 Requires: pip install -e '.[slack]' and SLACK_BOT_TOKEN / SLACK_APP_TOKEN /
 SLACK_CHANNEL in the environment (Phase 4.0, a human-provisioned Slack app
-with Socket Mode enabled and chat:write).
+with Socket Mode enabled and chat:write). SLACK_DEBUG_CHANNEL is optional.
 """
 
 from __future__ import annotations
@@ -36,10 +44,12 @@ _DENY = "soc_assist_deny"
 class SlackSurface(Surface):
     """Narrates one investigation as one Slack thread; approvals are buttons."""
 
-    def __init__(self, app: AsyncApp, channel: str):
+    def __init__(self, app: AsyncApp, channel: str, debug_channel: str | None = None):
         self._app = app
-        self._channel = channel
-        self._thread_ts: str | None = None  # first message roots the thread
+        self._channel = channel  # analyst: signal only
+        self._debug_channel = debug_channel  # operator: verbose trail (None -> fold in)
+        self._thread_ts: str | None = None  # first analyst message roots the thread
+        self._debug_thread_ts: str | None = None  # operator thread, when split out
         self._pending: dict[str, asyncio.Future[bool]] = {}
         self._handler: AsyncSocketModeHandler | None = None
         app.action(_APPROVE)(self._on_action)
@@ -51,6 +61,8 @@ class SlackSurface(Surface):
         return cls(
             app=AsyncApp(token=os.environ["SLACK_BOT_TOKEN"]),
             channel=os.environ["SLACK_CHANNEL"],
+            # Optional: empty/unset -> operator trail folds into the analyst thread.
+            debug_channel=os.environ.get("SLACK_DEBUG_CHANNEL") or None,
         )
 
     async def start(self) -> None:
@@ -65,11 +77,11 @@ class SlackSurface(Surface):
 
     # -- Surface ------------------------------------------------------------
 
-    async def notify(self, text: str) -> None:
-        await self._post(text)
+    async def notify(self, text: str, *, debug: bool = False) -> None:
+        await (self._post_debug(text) if debug else self._post(text))
 
     async def stream(self, text: str) -> None:
-        await self._post(text)
+        await self._post_debug(text)  # operator-facing running narration
 
     async def request_approval(self, proposal: str) -> bool:
         correlation_id = uuid.uuid4().hex
@@ -122,6 +134,18 @@ class SlackSurface(Surface):
         )
         if self._thread_ts is None:
             self._thread_ts = resp["ts"]
+
+    async def _post_debug(self, text: str) -> None:
+        # No separate operator channel configured: fold the trail back into the
+        # analyst thread (single-channel behavior, unchanged for those setups).
+        if self._debug_channel is None:
+            await self._post(text)
+            return
+        resp = await self._app.client.chat_postMessage(
+            channel=self._debug_channel, thread_ts=self._debug_thread_ts, text=text
+        )
+        if self._debug_thread_ts is None:
+            self._debug_thread_ts = resp["ts"]
 
     async def _on_action(self, ack, body, client) -> None:
         await ack()

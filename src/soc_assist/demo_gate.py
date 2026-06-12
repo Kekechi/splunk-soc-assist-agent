@@ -41,7 +41,7 @@ class ScriptedSurface(Surface):
         self.answers = answers
         self.approvals_requested = 0
 
-    async def notify(self, text: str) -> None:
+    async def notify(self, text: str, *, debug: bool = False) -> None:
         print(f"  | {text}")
 
     async def stream(self, text: str) -> None:

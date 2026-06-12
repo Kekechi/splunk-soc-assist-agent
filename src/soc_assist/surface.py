@@ -13,15 +13,25 @@ from abc import ABC, abstractmethod
 
 
 class Surface(ABC):
-    """Where the investigation is narrated and approvals are requested."""
+    """Where the investigation is narrated and approvals are requested.
+
+    Two audiences, one seam. The *analyst* sees only signal — the detection that
+    fired, the verdict, the approval request, the published dashboard. The
+    *operator* sees the verbose trail — every tool call, SPL query, and the
+    agent's running narration. `notify(text)` and `request_approval()` are
+    analyst-facing; `notify(text, debug=True)` and `stream()` are operator-facing.
+    A single-stream backend (the CLI) shows both; a split backend (Slack) can
+    route them to separate channels.
+    """
 
     @abstractmethod
-    async def notify(self, text: str) -> None:
-        """Post a discrete status line (tool call, decision, error)."""
+    async def notify(self, text: str, *, debug: bool = False) -> None:
+        """Post a discrete status line. `debug=True` marks it operator-only
+        noise (tool calls, status); the default is an analyst-facing signal."""
 
     @abstractmethod
     async def stream(self, text: str) -> None:
-        """Post incremental investigation output as the agent produces it."""
+        """Post the agent's incremental narration (operator-facing detail)."""
 
     @abstractmethod
     async def request_approval(self, proposal: str) -> bool:
@@ -30,9 +40,10 @@ class Surface(ABC):
 
 
 class CliSurface(Surface):
-    """Terminal backend: stdout for output, stdin y/n for approvals."""
+    """Terminal backend: stdout for output, stdin y/n for approvals. One stream,
+    so the operator/analyst split collapses — everything prints."""
 
-    async def notify(self, text: str) -> None:
+    async def notify(self, text: str, *, debug: bool = False) -> None:
         print(text, flush=True)
 
     async def stream(self, text: str) -> None:

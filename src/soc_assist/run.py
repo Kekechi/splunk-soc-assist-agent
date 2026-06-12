@@ -121,15 +121,16 @@ async def run(alert: AlertContext | None, surface: Surface) -> Investigation | N
     profile = load_profile()
     async with ClaudeSDKClient(options=_full_options(surface, profile)) as client:
         if alert is None:
-            await surface.notify("[live] running the detection on-demand ...")
+            await surface.notify("[live] running the detection on-demand ...", debug=True)
             alert = await fetch_live_alert(client, profile)
             if alert is None:
                 await surface.notify("[live] detection returned no rows — nothing to do.")
                 return None
-            await surface.notify(
-                f"[live] fired: {alert.rule_name} | {alert.entities} "
-                f"| {alert.observed_count} failures"
-            )
+        # One analyst-facing headline roots the thread (both fixture and live paths).
+        await surface.notify(
+            f"Investigating: {alert.rule_name}\n"
+            f"entities: {alert.entities}  |  observed: {alert.observed_count} failures"
+        )
         inv = await investigate(alert, surface, debug=True, client=client)
         await _print_verdict(inv, surface)
 
@@ -138,13 +139,19 @@ async def run(alert: AlertContext | None, surface: Surface) -> Investigation | N
         await client.query(
             DASHBOARD_TURN.format(name=view_name, definition_json=json.dumps(definition))
         )
+        # Accumulate the agent's closing narration (dashboard URL + panel notes) and
+        # post it once as a single analyst message; the per-call tool lines are noise.
+        dashboard_text: list[str] = []
         async for message in client.receive_response():
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, TextBlock):
-                        await surface.stream(block.text)
+                        dashboard_text.append(block.text)
                     elif isinstance(block, ToolUseBlock):
-                        await surface.notify(f"  [tool] {block.name}")
+                        await surface.notify(f"  [tool] {block.name}", debug=True)
+        closing = "".join(dashboard_text).strip()
+        if closing:
+            await surface.notify(closing)
     return inv
 
 
@@ -181,7 +188,7 @@ async def main() -> None:
 
     alert = None if "--live" in sys.argv[1:] else BRUTE_FORCE_FIXTURE
     try:
-        await surface.notify("=== soc-assist ===\n")
+        await surface.notify("=== soc-assist ===\n", debug=True)
         await run(alert, surface)
     finally:
         if use_slack:
