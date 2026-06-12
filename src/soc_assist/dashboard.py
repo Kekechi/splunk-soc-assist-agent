@@ -15,17 +15,13 @@ from __future__ import annotations
 
 from .alert import AlertContext
 from .investigate import Investigation
+from .profile import DetectionProfile
 
-# Demo-friendly default window: the sample data is loaded shortly before the
-# demo, and classic syslog timestamps carry no year, so a relative window is
-# the robust choice over the alert's absolute ISO times.
+# Demo-friendly default window: real "now" data is comfortably inside it, and for
+# the synthetic sample a relative window is more robust than the alert's absolute
+# ISO times (classic syslog timestamps carry no year).
 _EARLIEST = "-24h@h"
 _LATEST = "now"
-
-_REX = (
-    'rex "(?<action_raw>Failed|Accepted) password for (?<user>\\S+) '
-    'from (?<src_ip>\\S+) port"'
-)
 
 
 def build_audit_dashboard(audit_index: str = "soc_audit") -> dict:
@@ -87,11 +83,21 @@ def build_audit_dashboard(audit_index: str = "soc_audit") -> dict:
     }
 
 
-def build_brute_force_dashboard(investigation: Investigation, alert: AlertContext) -> dict:
-    """A 3-panel evidence dashboard for a brute-force alert investigation."""
+def build_brute_force_dashboard(
+    investigation: Investigation, alert: AlertContext, profile: DetectionProfile
+) -> dict:
+    """A 3-panel evidence dashboard for a brute-force alert investigation.
+
+    Panel SPL is scoped to the profile's sourcetype + noise filter and extracts
+    fields with the profile's rex, so the panels populate on a real, noisy index
+    instead of dragnetting it.
+    """
     src_ip = alert.entities.get("src_ip", "*")
     user = alert.entities.get("user", "*")
-    base = f'index={alert.index} "password"'
+    rex = profile.rex
+    scope = f'index={alert.index} sourcetype="{profile.sourcetype}"'
+    if profile.noise_filter:
+        scope += f" {profile.noise_filter}"
     window = {"earliest": _EARLIEST, "latest": _LATEST}
 
     return {
@@ -107,7 +113,7 @@ def build_brute_force_dashboard(investigation: Investigation, alert: AlertContex
                 "name": "Total failed attempts",
                 "options": {
                     "query": (
-                        f'index={alert.index} "Failed password" | {_REX} '
+                        f'{scope} "Failed password" | {rex} '
                         f'| search src_ip="{src_ip}" user="{user}" '
                         "| stats count"
                     ),
@@ -119,7 +125,7 @@ def build_brute_force_dashboard(investigation: Investigation, alert: AlertContex
                 "name": "Failures over time",
                 "options": {
                     "query": (
-                        f'{base} "Failed password" | {_REX} '
+                        f'{scope} "Failed password" | {rex} '
                         f'| search src_ip="{src_ip}" '
                         "| timechart span=1m count as failures"
                     ),
@@ -131,7 +137,7 @@ def build_brute_force_dashboard(investigation: Investigation, alert: AlertContex
                 "name": "Sources and targeted users",
                 "options": {
                     "query": (
-                        f"{base} | {_REX} "
+                        f'{scope} "password" | {rex} '
                         '| stats count(eval(action_raw="Failed")) as failures, '
                         'count(eval(action_raw="Accepted")) as successes '
                         "by src_ip, user | sort - failures"

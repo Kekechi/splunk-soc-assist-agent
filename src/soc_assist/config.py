@@ -1,6 +1,7 @@
-"""Configuration — all of it env vars, grouped by privilege plane (DESIGN.md §1).
-
-READ plane only for now; WRITE/NOTIFY/AUDIT config lands with their phases.
+"""Configuration — endpoints/secrets as env vars, grouped by privilege plane
+(DESIGN.md §1). The WRITE/AUDIT planes read their own env in write_tool.py /
+audit.py; *what to detect and where* lives in the deployment profile (profile.py),
+re-exported here as `load_profile` for discoverability.
 """
 
 from __future__ import annotations
@@ -8,6 +9,8 @@ from __future__ import annotations
 import os
 
 from dotenv import load_dotenv
+
+from .profile import load_profile  # noqa: F401  (re-exported; see module docstring)
 
 
 def splunk_mcp_server() -> dict:

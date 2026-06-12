@@ -24,6 +24,11 @@ env/
 .idea/
 .DS_Store
 
+# Deployment profiles name deployment-specific indexes/sourcetypes — gitignored.
+# The public, env-agnostic template profiles/example.toml is the one exception.
+/profiles/*.toml
+!/profiles/example.toml
+
 # Local dev/session notes — not part of the public repo (may contain
 # deployment-specific hostnames). The SDK does not treat this as config.
 .claude/session/

@@ -30,7 +30,19 @@ configure or remediate anything else — do not try. A handful of focused querie
 a dragnet; stay inside the alert's time window unless you have a stated reason to widen."""
 
 
-def build_system_prompt(*, can_write: bool = False) -> str:
+def _pipeline_section(pipeline_profile: str | None) -> str:
+    if not pipeline_profile:
+        return ""
+    return f"""
+
+## Your data pipeline (how this Splunk shows the data)
+{pipeline_profile.strip()}
+
+The index can be large and noisy. Stay narrow: scope every query to the sourcetype and
+fields described above and to the alert's time window — never dragnet the whole index."""
+
+
+def build_system_prompt(*, can_write: bool = False, pipeline_profile: str | None = None) -> str:
     tools = _TOOLS_WITH_WRITE if can_write else _TOOLS_READ_ONLY
     return f"""You are a calm, senior SOC analyst mentoring a junior colleague.
 A detection rule has fired in Splunk and you are walking them through what it means.
@@ -56,6 +68,7 @@ A detection rule has fired in Splunk and you are walking them through what it me
    rule's static guess — override it when the evidence says otherwise.
 
 {tools}
+{_pipeline_section(pipeline_profile)}
 
 ## Severity rubric (deterministic — cite your rung)
 {_rubric_text()}
@@ -69,9 +82,6 @@ markdown fences, no surrounding prose — with exactly these keys:
   satisfy it.
 - "recommended_next_steps": a list of 3-5 concrete, ordered actions.
 """
-
-
-INVESTIGATION_SYSTEM_PROMPT = build_system_prompt(can_write=False)
 
 
 def format_alert(alert: AlertContext) -> str:

@@ -24,10 +24,11 @@ from claude_agent_sdk import (
 
 from .alert import BRUTE_FORCE_FIXTURE, AlertContext
 from .config import investigation_model, splunk_mcp_server
+from .profile import load_profile
 from .prompts import (
-    INVESTIGATION_SYSTEM_PROMPT,
     VERDICT_REQUEST,
     VERDICT_RETRY,
+    build_system_prompt,
     format_alert,
     parse_verdict,
 )
@@ -46,11 +47,12 @@ class Investigation:
 
 
 def _options() -> ClaudeAgentOptions:
+    profile = load_profile()
     return ClaudeAgentOptions(
         mcp_servers={"splunk": splunk_mcp_server()},
         # Wildcard is load-bearing: a bare mcp__splunk__run_query matches nothing.
         allowed_tools=["mcp__splunk__*"],
-        system_prompt=INVESTIGATION_SYSTEM_PROMPT,
+        system_prompt=build_system_prompt(pipeline_profile=profile.pipeline_profile),
         # SPEC §2.5: don't inherit ~/.claude settings (ambient MCP servers leak in
         # otherwise — observed in the Phase 1 spike).
         setting_sources=[],

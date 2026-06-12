@@ -1,0 +1,69 @@
+# soc-assist deployment profile (example / public template).
+#
+# Copy this to e.g. profiles/homelab.toml, edit it for your data, then point the app:
+#     export SOC_ASSIST_PROFILE=profiles/homelab.toml
+# Real (deployment-specific) profiles are gitignored; this example is env-agnostic.
+#
+# The values below match the built-in default — the brute-force demo on the synthetic
+# `auth` index — so this file reproduces the offline demo as-is. Edit to point at real
+# data (e.g. your own index/sourcetype, an `appname=sshd` noise filter, a rex that reads
+# a pre-extracted `message` field, and a pipeline_profile describing how YOUR data looks).
+#
+# Required keys: index, sourcetype, detection_spl, rex, rule_name, rule_id,
+# pipeline_profile. Everything else is optional and falls back to a sensible default.
+
+# ── Where the auth data lives ─────────────────────────────────────────────────
+index = "auth"
+sourcetype = "linux_secure"
+
+# Extra base constraint to cut noise on a busy index, e.g. "appname=sshd". On a real
+# multi-source index this is what keeps the agent (and dashboard) off the firewall/DNS
+# torrent. Leave "" if the sourcetype alone is specific enough.
+noise_filter = ""
+
+# ── Identity & triage ─────────────────────────────────────────────────────────
+rule_name = "Auth brute force: failed-login burst followed by a success"
+rule_id = "soc-assist-bf-001"
+severity_hint = "medium"
+
+# Which detection-output columns are the entities. The rest of each fired row is the
+# fixed contract the app reads: failure_count, actions, earliest_time, latest_time.
+entity_fields = ["src_ip", "user"]
+
+# On-demand detection window (applied as inline earliest=/latest= modifiers).
+earliest = "-24h"
+latest = "now"
+
+# Optional: dispatch a provisioned saved search instead of running detection_spl
+# on-demand. Omit for on-demand (recommended for a fresh install with no alerts yet).
+# saved_search = "soc_assist_bf_detect"
+
+# ── Field extraction (single-quoted = literal; backslashes are NOT escaped) ────
+# Reused by the dashboard panels AND suggested to the agent for its own queries.
+# MUST capture groups named action_raw, user, src_ip. On raw syslog the default `_raw`
+# target works; if your pipeline puts the line in a `message` field, prefix `field=message`:
+#   rex = 'rex field=message "(?<action_raw>Failed|Accepted) password for (invalid user )?(?<user>\S+) from (?<src_ip>\S+) port"'
+rex = 'rex "(?<action_raw>Failed|Accepted) password for (invalid user )?(?<user>\S+) from (?<src_ip>\S+) port"'
+
+# ── The detection ─────────────────────────────────────────────────────────────
+# Failed-login burst per src_ip+user crossing a threshold. Must emit the entity columns
+# plus failure_count, actions, earliest_time, latest_time.
+detection_spl = '''
+index=auth sourcetype=linux_secure ("Failed password" OR "Accepted password")
+| rex "(?<action_raw>Failed|Accepted) password for (invalid user )?(?<user>\S+) from (?<src_ip>\S+) port"
+| eval action=if(action_raw="Failed","failure","success")
+| stats count(eval(action="failure")) as failure_count, values(action) as actions, min(_time) as earliest_time, max(_time) as latest_time by src_ip, user
+| where failure_count > 20
+'''
+
+# ── How your pipeline shows the data (injected into the agent's system prompt) ─
+# Name the signal sourcetype, the noise, the key fields, and where the auth text lives.
+# Tell the agent to apply the rex before filtering on extracted fields, so its
+# corroboration queries don't silently return zero rows on a noisy real index.
+pipeline_profile = '''
+Auth events are in `index=auth sourcetype=linux_secure` — raw sshd syslog. Fields are
+NOT auto-extracted; username, source IP and outcome only exist after applying the rex
+above. Use that exact rex in your own corroboration queries before filtering on
+user/src_ip/action_raw, or they will silently return zero rows. "Failed password" = a
+failed login, "Accepted password" = a success.
+'''
