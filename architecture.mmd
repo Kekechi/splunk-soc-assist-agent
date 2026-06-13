@@ -1,38 +1,60 @@
 %% soc-assist architecture — four planes separated by privilege.
+%% Nodes are colored by plane: READ=blue · WRITE=amber · NOTIFY=green · AUDIT=purple · gate=red.
 %% Render: npx -y @mermaid-js/mermaid-cli -i architecture.mmd -o architecture.svg -b transparent
+%%{init: {'theme':'base',
+  'themeVariables':{'fontSize':'15px','lineColor':'#5a6472','primaryTextColor':'#1f2933',
+    'clusterBkg':'#f7f9fc','clusterBorder':'#c6d0de'},
+  'flowchart':{'padding':14,'nodeSpacing':45,'rankSpacing':60,'curve':'basis'}
+}}%%
 flowchart TB
-    subgraph SPLUNK["Splunk Enterprise (10.2.x)"]
-        IDX[("index=auth<br/>sample brute-force data")]
-        DET["detection: saved search<br/>soc_assist_bf_detect"]
-        DASH["evidence dashboard<br/>(Dashboard Studio v2, app soc_assist)"]
+    subgraph SPLUNK["Splunk Enterprise"]
+        IDX[("index=auth<br/>sample data")]
+        DET["detection (saved search)<br/>soc_assist_bf_detect"]
+        DASH["evidence dashboard<br/>Dashboard Studio · app soc_assist"]
         AIDX[("index=soc_audit<br/>agent action log")]
         IDX --> DET
     end
 
-    LOADER["scripts/load_sample.sh<br/>(attack sim: 51 failed SSH logins, then 1 success)"] --> IDX
+    LOADER["scripts/load_sample.sh<br/>attack sim → index=auth"] --> IDX
 
     subgraph HARNESS["Harness — Claude Agent SDK (Python)"]
-        AGENT["Claude agent<br/>senior-analyst persona + severity rubric<br/>(SPL explained Claude-native; saia_* optional)"]
-        GATE{"can_use_tool gate<br/>1. hard scope check — out-of-scope: denied, no human asked<br/>2. human approval — default-deny"}
-        TOOL["WRITE plane: one in-process @tool create_dashboard<br/>URL fixed to ONE app from env; LLM never sees the token"]
+        AGENT["Claude agent<br/>senior-analyst persona + severity rubric"]
+        GATE{"can_use_tool gate<br/>scope check → human approval"}
+        TOOL["WRITE · @tool create_dashboard<br/>one app · LLM never holds the token"]
         AGENT -- "every tool call" --> GATE
-        GATE -- "approved + in-scope only" --> TOOL
+        GATE -- "approved + in-scope" --> TOOL
     end
 
-    subgraph NOTIFY["NOTIFY plane — zero Splunk privilege"]
-        SURF["Surface seam<br/>CliSurface (terminal) | SlackSurface (Socket Mode,<br/>Approve/Reject buttons → asyncio.Future bridge)"]
-    end
-
-    MCP["READ plane — Splunk MCP server<br/>read-only, broad: mcp__splunk__*"]
+    MCP["READ · Splunk MCP server<br/>read-only · mcp__splunk__*"]
+    SURF["NOTIFY · Surface seam<br/>Slack / terminal · analyst + operator channels"]
+    HEC["AUDIT · HEC emitter"]
 
     DET -- "fired alert → AlertContext" --> AGENT
     AGENT <-- "investigative SPL" --> MCP
     MCP <--> SPLUNK
     GATE <-- "request_approval(proposal)" --> SURF
-    TOOL -- "POST data/ui/views (least-priv token)" --> DASH
-    GATE -. "every decision (allow/deny + reason)" .-> HEC
-    TOOL -. "every write (success/error)" .-> HEC
-    HEC["AUDIT plane — HEC emitter"] --> AIDX
+    TOOL -- "POST data/ui/views" --> DASH
+    GATE -. "decision (allow/deny + reason)" .-> HEC
+    TOOL -. "write (success/error)" .-> HEC
+    HEC --> AIDX
 
     ANALYST(["junior analyst"]) <--> SURF
-    ANALYST -- "reads dashboard + audit trail in Splunk Web" --> DASH
+    ANALYST -- "reads dashboard + audit trail" --> DASH
+
+    classDef read fill:#dcebff,stroke:#3b82c4,color:#0b3a66,stroke-width:1.5px;
+    classDef write fill:#fde6c8,stroke:#cf8a2c,color:#6b3d06,stroke-width:1.5px;
+    classDef notify fill:#d9f3e1,stroke:#34a25c,color:#0f5026,stroke-width:1.5px;
+    classDef audit fill:#ece1fb,stroke:#8a5cc8,color:#3d2068,stroke-width:1.5px;
+    classDef gate fill:#ffdcdc,stroke:#d4504f,color:#6b1614,stroke-width:2px;
+    classDef agent fill:#fff3c4,stroke:#caa72b,color:#5c4a06,stroke-width:2px;
+    classDef data fill:#eef2f7,stroke:#9aa7b8,color:#1f2933;
+    classDef ext fill:#ffffff,stroke:#9aa7b8,color:#1f2933;
+
+    class MCP read;
+    class TOOL write;
+    class SURF notify;
+    class HEC,AIDX audit;
+    class GATE gate;
+    class AGENT agent;
+    class IDX,DET,DASH data;
+    class LOADER,ANALYST ext;

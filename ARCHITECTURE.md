@@ -1,9 +1,10 @@
 # Architecture
 
 > The required deliverable — "an architecture diagram showing how it talks to
-> Splunk, how AI is integrated, and the data flow" — lives here:
-> [`architecture.svg`](architecture.svg) (rendered from
-> [`architecture.mmd`](architecture.mmd), also shown inline below).
+> Splunk, how AI is integrated, and the data flow" — is
+> [`architecture.svg`](architecture.svg) below. It is rendered from
+> [`architecture.mmd`](architecture.mmd), the single editable source of truth
+> (`npx -y @mermaid-js/mermaid-cli -i architecture.mmd -o architecture.svg -b transparent`).
 
 ## The demo arc
 
@@ -18,44 +19,7 @@ printf 'y\n' | python -m soc_assist.run --live
 
 ![architecture](architecture.svg)
 
-```mermaid
-flowchart TB
-    subgraph SPLUNK["Splunk Enterprise (10.2.x)"]
-        IDX[("index=auth<br/>sample brute-force data")]
-        DET["detection: saved search<br/>soc_assist_bf_detect"]
-        DASH["evidence dashboard<br/>(Dashboard Studio v2, app soc_assist)"]
-        AIDX[("index=soc_audit<br/>agent action log")]
-        IDX --> DET
-    end
-
-    LOADER["scripts/load_sample.sh<br/>(attack sim: 51 failed SSH logins, then 1 success)"] --> IDX
-
-    subgraph HARNESS["Harness — Claude Agent SDK (Python)"]
-        AGENT["Claude agent<br/>senior-analyst persona + severity rubric<br/>(SPL explained Claude-native; saia_* optional)"]
-        GATE{"can_use_tool gate<br/>1. hard scope check — out-of-scope: denied, no human asked<br/>2. human approval — default-deny"}
-        TOOL["WRITE plane: one in-process @tool create_dashboard<br/>URL fixed to ONE app from env; LLM never sees the token"]
-        AGENT -- "every tool call" --> GATE
-        GATE -- "approved + in-scope only" --> TOOL
-    end
-
-    subgraph NOTIFY["NOTIFY plane — zero Splunk privilege"]
-        SURF["Surface seam<br/>CliSurface (terminal) | SlackSurface (Socket Mode,<br/>Approve/Reject buttons → asyncio.Future bridge)"]
-    end
-
-    MCP["READ plane — Splunk MCP server<br/>read-only, broad: mcp__splunk__*"]
-
-    DET -- "fired alert → AlertContext" --> AGENT
-    AGENT <-- "investigative SPL" --> MCP
-    MCP <--> SPLUNK
-    GATE <-- "request_approval(proposal)" --> SURF
-    TOOL -- "POST data/ui/views (least-priv token)" --> DASH
-    GATE -. "every decision (allow/deny + reason)" .-> HEC
-    TOOL -. "every write (success/error)" .-> HEC
-    HEC["AUDIT plane — HEC emitter"] --> AIDX
-
-    ANALYST(["junior analyst"]) <--> SURF
-    ANALYST -- "reads dashboard + audit trail in Splunk Web" --> DASH
-```
+*To regenerate after editing `architecture.mmd`: re-run the `mermaid-cli` command above.*
 
 - **READ** — native Splunk MCP, read-only, broad. The SDK consumes it as an external
   MCP client. Core tools are prefixed `splunk_` (e.g. `splunk_run_query`); the
@@ -69,9 +33,20 @@ flowchart TB
   pairs it with a dedicated Splunk role that has **zero capabilities** and only
   that app's write ACL.
 - **NOTIFY** — the `Surface` seam; Slack (Socket Mode — no inbound server) or the
-  terminal. Zero Splunk privilege.
+  terminal. Zero Splunk privilege. Two audiences, one seam: the **analyst** channel
+  carries signal only (verdict, approval ask, dashboard URL), while the optional
+  **operator** channel (`SLACK_DEBUG_CHANNEL`) carries the verbose trail — every tool
+  call, SPL query, and the agent's running narration. Unset → the trail folds back
+  into the analyst thread (single-channel behavior).
 - **AUDIT** — every gate decision and every write, appended to a dedicated index
   over HEC; surfaced in its own dashboard. The watcher is watched.
+
+The `index=auth` / `soc_assist_bf_detect` shown above are the **built-in default
+profile** (the synthetic brute-force demo), not hardcoded targets. *What to detect
+and where* — index, sourcetype, detection SPL, entity fields — is a `DetectionProfile`
+loaded from `SOC_ASSIST_PROFILE` (a TOML file; `profiles/example.toml` is the
+env-agnostic template), kept separate from `.env` so a real deployment retargets the
+data plane without touching secrets.
 
 ### The gate (the security core)
 
